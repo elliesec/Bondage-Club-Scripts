@@ -21,6 +21,24 @@ Ensure you have Node.js and npm installed, and install dependencies with npm:
 
 ## Available Scripts
 
+### Cleaning
+
+#### Clean
+
+Completely removes the output and cache directories, allowing scripts to be run fresh.
+
+```
+> npm run clean
+```
+
+#### Clean Cache
+
+Removes all caches, allowing them to be rebuilt on the next script run.
+
+```
+> npm run clean:cache
+```
+
 ### Documentation
 
 #### JSDoc
@@ -35,10 +53,16 @@ Generates JSDoc web pages in the `output/doc/jsdoc` directory.
 
 Generates Markdown documentation in the `output/doc/markdown` directory.
 
-**Note:** This can take a little while to run.
+**Note:** This can take a little while to run for the first time.
 
 ```
 > npm run markdown
+```
+
+To run without the markdown cache (does not delete the cache):
+
+```
+> npm run markdown:noCache
 ```
 
 #### Textile
@@ -49,4 +73,10 @@ Generates documentation in the Textile markup format (for use in wikis) in the `
 
 ```
 > npm run textile
+```
+
+To run without the markdown cache (does not delete the cache):
+
+```
+> npm run textile:noCache
 ```
