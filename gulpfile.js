@@ -90,7 +90,12 @@ function markdownFilter(file, useCache) {
 function markdownTransform(content, file, useCache) {
     info(`Generating markdown for file ${magenta(file.path)}`);
     return jsdoc2md.render({source: content})
-        .then(cache[file.path] = hasha(content));
+        .then((markdown) => {
+            if (useCache) {
+                cache[file.path] = hasha(content);
+            }
+            return markdown;
+        });
 }
 
 function cleanTextile(cb) {
@@ -107,13 +112,37 @@ function generateTextile() {
 function markdownToTextile(markdown, file) {
     info(`Generating textile for file ${magenta(file.path)}`);
     const header = `h1. ${file.stem}\n\n{{>toc}}\n\n`;
-    const constants = [];
-    const content = markdown
-        // Replace headings
-        .replace(/^##\s*(Functions|Constants)\s*$/mg, "h2. $1")
+    let content = markdown
+        // Replace top-level headings
+        .replace(/^##\s*(Functions|Constants|Typedefs)\s*$/mg, "h2. $1")
+        // Replace other headings
         .replace(/^(#+)\s*(.+)?$/mg, (match, p1, p2) => `h${p1.length + 1}. ${p2}\n\n`)
         // Remove dl element
-        .replace(/<dl>[\s\S]+?<\/dl>/g, "")
+        .replace(/<dl>[\s\S]+?<\/dl>/g, "");
+
+    // Split out the individual member definitions
+    const sections = content.split(/<a name=".+?"><\/a>/);
+
+    const partMap = {
+        constant: [],
+        function: [],
+        typedef: [],
+    };
+    content = sections[0];
+    // Break up the member definitions by member type
+    sections.forEach(section => {
+        const match = section.match(/\*\*Kind\*\*:\s*global\s*(constant|function|typedef)/);
+        if (match) {
+            partMap[match[1]].push(section);
+        }
+    });
+
+    content = content
+        // Move relevant member definitions under their correct section headings
+        .replace(/h2.\s*(Constant|Function|Typedef)s/g, (match, p1) => {
+            key = p1.toLowerCase();
+            return `h2. ${p1}s\n\n${partMap[key].join("\n\n")}`;
+        })
         // Translate code blocks
         .replace(/<\/?code>/g, "@")
         // Remove anchors
@@ -126,15 +155,6 @@ function markdownToTextile(markdown, file) {
         .replace(/\\\|/g, "|")
         // Replace duplicated hyphens
         .replace(/(?:\s*-)+\s*/g, " - ")
-        // Store global constant definitions
-        .replace(/h3\.[\s\S]+?\*\*Kind\*\*:\s*global constant/g, (match) => {
-            constants.push(match);
-            return "";
-        })
-        // Put global constants in the right place
-        .replace(/h2\. Constants/, match => {
-            return `${match}\n\n${constants.join("\n\n")}`;
-        })
         // Trim trailing whitespace
         .replace(/^(\s+)+$/mg, "")
         // Keep at most one consecutive empty line
