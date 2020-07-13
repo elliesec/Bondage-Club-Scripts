@@ -1,15 +1,18 @@
 const fs = require("fs");
+const util = require("util");
 const path = require("path");
-const {src, dest, series, parallel} = require("gulp");
+const { src, dest, series, parallel } = require("gulp");
 const rename = require("gulp-rename");
 const transform = require("gulp-transform");
 const jsdoc2md = require("jsdoc-to-markdown");
-const {info} = require("fancy-log");
-const {magenta} = require("chalk");
+const { info } = require("fancy-log");
+const { magenta } = require("chalk");
 const rimraf = require("rimraf");
 const filter = require("gulp-filter");
 const mkdirp = require("mkdirp");
 const hasha = require("hasha");
+
+const writeFileAsync = util.promisify(fs.writeFile);
 
 const clubRoot = path.resolve(__dirname, "../Bondage-College/BondageClub");
 const output = path.resolve(__dirname, "output");
@@ -17,9 +20,11 @@ const cacheDir = path.resolve(__dirname, ".cache");
 
 let cache;
 try {
-    cache = require("./.cache/cache.json");
+	cache = require("./.cache/cache.json");
 } catch {
-    cache = {};
+	cache = {
+		markdown: {},
+	};
 }
 
 exports.clean = parallel(clean, cleanCache);
@@ -56,46 +61,69 @@ function markdownTask(useCache) {
 }
 
 function generateMarkdownTask(useCache, cb) {
-    const stream = src([
-        `${clubRoot}/**/*.js`,
-        `!${clubRoot}/Tools/**`,
-        `!${clubRoot}/Scripts/socket.io/**`,
-        `!${clubRoot}/Scripts/three/**`,
-        `!${clubRoot}/Scripts/webgl/**`,
-    ])
-        .pipe(filter((file => markdownFilter(file, useCache))))
-        .pipe(transform("utf8", (content, file) => markdownTransform(content, file, useCache)))
-        .pipe(filter(file => !!file.contents.length))
-        .pipe(rename({extname: ".md"}))
-        .pipe(dest(path.join(output, "doc", "markdown")));
+	const undocumented = [];
 
-    stream.on("end", () => {
-        info(`Markdown generation complete${useCache ? ", saving cache..." : ""}`);
-        if (useCache) {
-            mkdirp(cacheDir).then(() => fs.writeFile(path.join(cacheDir, "cache.json"), JSON.stringify(cache), cb));
-        } else {
-            cb();
-        }
-    });
+	const stream = src([
+		`${clubRoot}/**/*.js`,
+		`!${clubRoot}/Tools/**`,
+		`!${clubRoot}/Scripts/socket.io/**`,
+		`!${clubRoot}/Scripts/three/**`,
+		`!${clubRoot}/Scripts/webgl/**`,
+		`!${clubRoot}/**/node_modules/**`,
+	])
+		.pipe(transform("utf8", (content, file) => markdownTransform(content, file, useCache)))
+		.pipe(filter(file => {
+			const hasDocs = !!file.contents.length;
+			if (!hasDocs) {
+				undocumented.push(file.relative);
+			}
+			return hasDocs;
+		}))
+		.pipe(rename({ extname: ".md" }))
+		.pipe(dest(path.join(output, "doc", "markdown")));
+
+	stream.on("end", () => {
+		writeCache(useCache)
+			.then(() => writeUndocumented(undocumented))
+			.then(() => cb());
+	});
 }
 
-function markdownFilter(file, useCache) {
-    if (!useCache) {
-        return true;
-    }
-    const fileHash = hasha(file.contents);
-    return fileHash !== cache[file.path];
+function writeCache(useCache) {
+	info(`Markdown generation complete${useCache ? ", saving cache..." : ""}`);
+	return new Promise(resolve => {
+		if (useCache) {
+			mkdirp(cacheDir)
+				.then(() => writeFileAsync(path.join(cacheDir, "cache.json"), JSON.stringify(cache)))
+				.then(resolve);
+		} else {
+			resolve();
+		}
+	});
+}
+
+function writeUndocumented(undocumented) {
+	info(`Markdown generation complete, recording undocumented files...`);
+	const bullets = undocumented.sort().map(file => `* ${file}`);
+	const markdown = `# Undocumented Files\n\n${bullets.join("\n")}`;
+	return mkdirp(path.join(output, "doc")).then(() => writeFileAsync(path.join(output, "doc", "undocumented-files.md"), markdown));
 }
 
 function markdownTransform(content, file, useCache) {
-    info(`Generating markdown for file ${magenta(file.path)}`);
-    return jsdoc2md.render({source: content})
-        .then((markdown) => {
-            if (useCache) {
-                cache[file.path] = hasha(content);
-            }
-            return markdown;
-        });
+	info(`Generating markdown for file ${magenta(file.path)}`);
+	const markdownCache = cache.markdown = cache.markdown || {};
+	const cacheEntry = cache.markdown[file.path];
+	if (useCache && Array.isArray(cacheEntry) && hasha(content) === cacheEntry[0]) {
+		return cacheEntry[1];
+	} else {
+		return jsdoc2md.render({ source: content })
+			.then((markdown) => {
+				if (useCache) {
+					markdownCache[file.path] = [hasha(content), markdown];
+				}
+				return markdown;
+			});
+	}
 }
 
 function cleanTextile(cb) {
