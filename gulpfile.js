@@ -18,6 +18,10 @@ const clubRoot = path.resolve(__dirname, "../Bondage-College/BondageClub");
 const output = path.resolve(__dirname, "output");
 const cacheDir = path.resolve(__dirname, ".cache");
 
+const codeMappings = {
+	js: "javascript",
+};
+
 let cache;
 try {
 	cache = require("./.cache/cache.json");
@@ -116,7 +120,7 @@ function markdownTransform(content, file, useCache) {
 	if (useCache && Array.isArray(cacheEntry) && hasha(content) === cacheEntry[0]) {
 		return cacheEntry[1];
 	} else {
-		return jsdoc2md.render({ source: content })
+		return jsdoc2md.render({ source: content, configure: path.join(__dirname, "jsdoc.conf.js") })
 			.then((markdown) => {
 				if (useCache) {
 					markdownCache[file.path] = [hasha(content), markdown];
@@ -166,13 +170,18 @@ function markdownToTextile(markdown, file) {
     });
 
     content = content
-        // Move relevant member definitions under their correct section headings
-        .replace(/h2.\s*(Constant|Function|Typedef)s/g, (match, p1) => {
-            key = p1.toLowerCase();
-            return `h2. ${p1}s\n\n${partMap[key].join("\n\n")}`;
-        })
-        // Translate code blocks
-        .replace(/<\/?code>/g, "@")
+		// Move relevant member definitions under their correct section headings
+		.replace(/h2.\s*(Constant|Function|Typedef)s/g, (match, p1) => {
+			key = p1.toLowerCase();
+			return `h2. ${p1}s\n\n${partMap[key].join("\n\n")}`;
+		})
+		// Translate code elements
+		.replace(/<\/?code>/g, "@")
+		// Translate code blocks
+		.replace(/```(\w+)([\s\S]+?)```/g, (match, p1, p2) => {
+			const languageKey = codeMappings[p1] || p1;
+			return `<pre><code class="${languageKey}">${p2}</code></pre>`;
+		})
         // Remove anchors
         .replace(/<a[\s\S]+?<\/a>/g, "")
         // Remove table heading separators

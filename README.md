@@ -2,6 +2,8 @@
 
 A collection of useful scripts for the Bondage Club repositories.
 
+**Important**: If you have just pulled down a new version of the repository, it is advisable to run the `clean` script before running any other scripts, otherwise strange things may happen. No attempt is currently being made to make changes backwards-compatible. 
+
 Note that this repository is intended to sit alongside the `Bondage-College` and `Bondage-Club-Server` repositories:
 
 ```
