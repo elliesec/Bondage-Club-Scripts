@@ -135,46 +135,51 @@ function cleanTextile(cb) {
 }
 
 function generateTextile() {
-    return src(`${output}/doc/markdown/**/*.md`)
-        .pipe(transform("utf8", markdownToTextile))
-        .pipe(rename({extname: ".textile"}))
-        .pipe(dest(path.join(output, "doc", "textile")));
+	return src(`${output}/doc/markdown/**/*.md`)
+		.pipe(transform("utf8", markdownToTextile))
+		.pipe(rename({ extname: ".textile" }))
+		.pipe(dest(path.join(output, "doc", "textile")));
 }
 
 function markdownToTextile(markdown, file) {
-    info(`Generating textile for file ${magenta(file.path)}`);
-    const header = `h1. ${file.stem}\n\n{{>toc}}\n\n`;
-    let content = markdown
-        // Replace top-level headings
-        .replace(/^##\s*(Functions|Constants|Typedefs)\s*$/mg, "h2. $1")
-        // Replace other headings
-        .replace(/^(#+)\s*(.+)?$/mg, (match, p1, p2) => `h${p1.length + 1}. ${p2}\n\n`)
-        // Remove dl element
-        .replace(/<dl>[\s\S]+?<\/dl>/g, "");
+	info(`Generating textile for file ${magenta(file.path)}`);
+	const header = `h1. ${file.stem}\n\n{{>toc}}\n\n`;
+	let content = markdown
+		// Replace top-level headings
+		.replace(/^##\s*(Functions|Constants|Typedefs)\s*$/mg, "h2. $1")
+		// Replace other headings
+		.replace(/^(#+)\s*(.+)?$/mg, (match, p1, p2) => `h${p1.length + 1}. ${p2}\n\n`)
+		// Remove dl element
+		.replace(/<dl>[\s\S]+?<\/dl>/g, "");
 
-    // Split out the individual member definitions
-    const sections = content.split(/<a name=".+?"><\/a>/);
+	// Split out the individual member definitions
+	const sections = content.split(/<a name=".+?"><\/a>/);
 
-    const partMap = {
-        constant: [],
-        function: [],
-        typedef: [],
-    };
-    content = sections[0];
-    // Break up the member definitions by member type
-    sections.forEach(section => {
-        const match = section.match(/\*\*Kind\*\*:\s*global\s*(constant|function|typedef)/);
-        if (match) {
-            partMap[match[1]].push(section);
-        }
-    });
+	const partMap = {
+		constant: [],
+		function: [],
+		typedef: [],
+	};
 
-    content = content
-		// Move relevant member definitions under their correct section headings
-		.replace(/h2.\s*(Constant|Function|Typedef)s/g, (match, p1) => {
-			key = p1.toLowerCase();
-			return `h2. ${p1}s\n\n${partMap[key].join("\n\n")}`;
-		})
+	// Break up the member definitions by member type
+	sections.forEach(section => {
+		const match = section.match(/\*\*Kind\*\*:\s*global\s*(constant|function|typedef)/);
+		if (match) {
+			partMap[match[1]].push(section);
+		}
+	});
+
+	content = "";
+
+	// Arrange the various sections under their respective headings
+	["Constant", "Function", "Typedef"].forEach(heading => {
+		var sections = partMap[heading.toLowerCase()];
+		if (sections.length) {
+			content += `h2. ${heading}s\n\n${sections.join("\n\n")}\n\n`;
+		}
+	});
+
+	content = content
 		// Translate code elements
 		.replace(/<\/?code>/g, "@")
 		// Translate code blocks
@@ -182,10 +187,10 @@ function markdownToTextile(markdown, file) {
 			const languageKey = codeMappings[p1] || p1;
 			return `<pre><code class="${languageKey}">${p2}</code></pre>`;
 		})
-        // Remove anchors
-        .replace(/<a[\s\S]+?<\/a>/g, "")
-        // Remove table heading separators
-        .replace(/^(?:\|\s*-+\s*)+\|/mg, "")
+		// Remove anchors
+		.replace(/<a[\s\S]+?<\/a>/g, "")
+		// Remove table heading separators
+		.replace(/^(?:\|\s*-+\s*)+\|/mg, "")
         // Compress tables
         .replace(/\|\n+\|/g, "|\n|")
         // Replace escaped | characters
